@@ -3,31 +3,23 @@ const router = express.Router();
 const User = require('../model/User');
 const { auth, requireRole, hasPermission } = require('../midleware/auth');
 const multer = require('multer');
-const path = require('path');
+const { uploadToImageBB } = require('../utils/imagebb');
 
-// Configure multer for file upload
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/profiles/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer for memory storage (we'll upload to ImageBB)
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(file.originalname.split('.').pop().toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
 
     if (mimetype && extname) {
       return cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed!'));
+      cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed!'));
     }
   }
 });
@@ -132,6 +124,22 @@ router.post('/', auth, upload.single('profileImage'), async (req, res) => {
       }
     }
 
+    // Upload image to ImageBB if provided
+    let profileImageUrl = null;
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToImageBB(req.file.buffer, req.file.originalname);
+        profileImageUrl = uploadResult.url; // Store the full ImageBB URL
+        console.log('✅ Image uploaded to ImageBB:', profileImageUrl);
+      } catch (uploadError) {
+        console.error('ImageBB upload error:', uploadError.message);
+        return res.status(500).json({
+          message: 'Failed to upload profile image',
+          error: uploadError.message
+        });
+      }
+    }
+
     const userData = {
       name: req.body.name,
       email: req.body.email,
@@ -140,7 +148,7 @@ router.post('/', auth, upload.single('profileImage'), async (req, res) => {
       address: req.body.address,
       role: req.body.role,
       permissions: permissions || {},
-      profileImage: req.file ? `/uploads/profiles/${req.file.filename}` : null,
+      profileImage: profileImageUrl,
       createdBy: req.userId
     };
 
@@ -188,9 +196,19 @@ router.put('/:id', auth, upload.single('profileImage'), async (req, res) => {
       updateData.password = req.body.password;
     }
 
-    // Update profile image if provided
+    // Upload new profile image to ImageBB if provided
     if (req.file) {
-      updateData.profileImage = `/uploads/profiles/${req.file.filename}`;
+      try {
+        const uploadResult = await uploadToImageBB(req.file.buffer, req.file.originalname);
+        updateData.profileImage = uploadResult.url; // Store the ImageBB URL
+        console.log('✅ Profile image updated on ImageBB:', uploadResult.url);
+      } catch (uploadError) {
+        console.error('ImageBB upload error:', uploadError.message);
+        return res.status(500).json({
+          message: 'Failed to upload profile image',
+          error: uploadError.message
+        });
+      }
     }
 
     const user = await User.findByIdAndUpdate(
