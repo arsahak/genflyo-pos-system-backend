@@ -15,20 +15,25 @@ const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 const MAX_DEVICES_PER_USER = 5;
 
 // Rate limiting for authentication endpoints
+// More lenient for production to avoid blocking legitimate users
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per windowMs
+  max: process.env.NODE_ENV === 'production' ? 10 : 5, // More attempts in production
   message: "Too many authentication attempts, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting in development
+  skip: (req) => process.env.NODE_ENV !== 'production',
 });
 
 const strictAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3, // 3 requests per windowMs for sensitive operations
+  max: process.env.NODE_ENV === 'production' ? 5 : 3, // More attempts in production
   message: "Too many requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip rate limiting in development
+  skip: (req) => process.env.NODE_ENV !== 'production',
 });
 
 // Helper function to hash tokens
@@ -236,6 +241,9 @@ router.post("/login", authLimiter, async (req, res) => {
   try {
     const { email, password, deviceName } = req.body;
 
+    // Log login attempt (without sensitive data)
+    console.log(`Login attempt for email: ${email} from IP: ${req.ip}`);
+
     // Input validation
     if (!email || !password) {
       return res.status(400).json({
@@ -352,8 +360,16 @@ router.post("/login", authLimiter, async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
+    console.error("Error stack:", error.stack);
+    
+    // Provide more specific error messages in development
+    const errorMessage = process.env.NODE_ENV === 'production' 
+      ? "Login failed. Please try again later." 
+      : `Login failed: ${error.message}`;
+    
     res.status(500).json({
-      message: "Login failed. Please try again later.",
+      message: errorMessage,
+      ...(process.env.NODE_ENV !== 'production' && { error: error.message })
     });
   }
 });
