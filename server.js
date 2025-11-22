@@ -25,6 +25,7 @@ const customerRoutes = require("./route/customers");
 const reportRoutes = require("./route/reports");
 const storeRoutes = require("./route/stores");
 const userRoutes = require("./route/users");
+const settingsRoutes = require("./route/settings");
 
 const app = express();
 const server = http.createServer(app);
@@ -159,6 +160,7 @@ app.use("/api/sales", salesRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/settings", settingsRoutes);
 
 // Socket.IO connection handler
 io.on("connection", (socket) => {

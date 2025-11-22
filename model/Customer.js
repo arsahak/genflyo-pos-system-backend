@@ -21,6 +21,11 @@ const customerSchema = new mongoose.Schema({
     zipCode: String,
     country: String
   },
+  membershipType: {
+    type: String,
+    enum: ['none', 'regular', 'silver', 'gold', 'platinum'],
+    default: 'regular'
+  },
   loyaltyPoints: {
     type: Number,
     default: 0

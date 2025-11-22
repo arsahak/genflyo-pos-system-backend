@@ -232,6 +232,85 @@ router.get('/meta/brands', auth, async (req, res) => {
 });
 
 /**
+ * POST /api/products/bulk-import
+ * Bulk import products from CSV
+ */
+router.post('/bulk-import', auth, async (req, res) => {
+  try {
+    // Check permission
+    if (!req.user.permissions?.canAddProducts && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'You do not have permission to add products' });
+    }
+
+    const { products } = req.body;
+
+    if (!products || !Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ message: 'No products provided for import' });
+    }
+
+    const results = {
+      success: [],
+      failed: [],
+      imported: 0,
+      errors: []
+    };
+
+    // Process each product
+    for (let i = 0; i < products.length; i++) {
+      const productData = products[i];
+      
+      try {
+        // Set required fields
+        const product = new Product({
+          name: productData.name,
+          sku: productData.sku || undefined,
+          barcode: productData.barcode || undefined,
+          description: productData.description || undefined,
+          category: productData.category,
+          subCategory: productData.subCategory || undefined,
+          brand: productData.brand || undefined,
+          price: parseFloat(productData.price) || 0,
+          cost: productData.cost ? parseFloat(productData.cost) : undefined,
+          stock: parseInt(productData.stock) || 0,
+          minStock: productData.minStock ? parseInt(productData.minStock) : 0,
+          reorderLevel: productData.reorderLevel ? parseInt(productData.reorderLevel) : 0,
+          unit: productData.unit || 'pcs',
+          hasExpiry: productData.hasExpiry === true || productData.hasExpiry === 'TRUE',
+          expiryDate: productData.expiryDate ? new Date(productData.expiryDate) : undefined,
+          expiryAlertDays: productData.expiryAlertDays ? parseInt(productData.expiryAlertDays) : 0,
+          isFeatured: productData.isFeatured === true || productData.isFeatured === 'TRUE',
+          isActive: productData.isActive !== false && productData.isActive !== 'FALSE',
+          createdBy: req.userId
+        });
+
+        await product.save();
+        results.success.push({ row: i + 1, name: productData.name, id: product._id });
+        results.imported++;
+      } catch (error) {
+        console.error(`Error importing product at row ${i + 1}:`, error.message);
+        results.failed.push({ row: i + 1, name: productData.name, error: error.message });
+        results.errors.push({
+          row: i + 1,
+          error: error.code === 11000 ? 'Duplicate SKU or Barcode' : error.message
+        });
+      }
+    }
+
+    console.log(`✅ Bulk import completed: ${results.imported} products imported, ${results.failed.length} failed`);
+
+    res.status(200).json({
+      message: `Import completed: ${results.imported} products imported successfully`,
+      imported: results.imported,
+      failed: results.failed.length,
+      results
+    });
+  } catch (error) {
+    console.error('Error during bulk import:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+/**
  * GET /api/products/:id
  * Get product by ID
  */
