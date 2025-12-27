@@ -11,7 +11,7 @@ const rateLimit = require("express-rate-limit");
 // Constants for security
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME = 2 * 60 * 60 * 1000; // 2 hours
-const REFRESH_TOKEN_EXPIRY_DAYS = 7;
+const REFRESH_TOKEN_EXPIRY_DAYS = 30; // Changed from 7 to 30 days
 const MAX_DEVICES_PER_USER = 5;
 
 // Rate limiting for authentication endpoints

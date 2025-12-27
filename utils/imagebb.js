@@ -24,33 +24,56 @@ const uploadToImageBB = async (imageData, fileName = "image") => {
     const apiKey = process.env.IMAGEBB_API_KEY;
 
     if (!apiKey) {
+      console.error("❌ IMAGEBB_API_KEY environment variable check:");
+      console.error("   - process.env.IMAGEBB_API_KEY:", process.env.IMAGEBB_API_KEY);
+      console.error("   - Type:", typeof process.env.IMAGEBB_API_KEY);
+      console.error("   - Available env vars starting with IMAGE:", 
+        Object.keys(process.env).filter(k => k.includes('IMAGE')));
+      
       throw new Error(
-        "IMAGEBB_API_KEY is not configured in environment variables"
+        "IMAGEBB_API_KEY is not configured in environment variables. " +
+        "Please add IMAGEBB_API_KEY=your_api_key to your .env file in the backend folder and restart the server."
       );
+    }
+
+    // Validate image data
+    if (!imageData) {
+      throw new Error("No image data provided");
     }
 
     // Convert buffer to base64 if needed
     let base64Image;
     if (Buffer.isBuffer(imageData)) {
+      if (imageData.length === 0) {
+        throw new Error("Image buffer is empty");
+      }
       base64Image = imageData.toString("base64");
+    } else if (typeof imageData === "string") {
+      // If already base64, use it directly
+      // Remove data URL prefix if present (data:image/...;base64,)
+      base64Image = imageData.replace(/^data:image\/\w+;base64,/, "");
     } else {
-      base64Image = imageData;
+      throw new Error("Invalid image data format");
     }
 
     // Create form data
     const formData = new FormData();
     formData.append("key", apiKey);
     formData.append("image", base64Image);
-    formData.append("name", fileName);
+
+    console.log(`📤 Uploading image to ImageBB (${base64Image.length} bytes base64)...`);
 
     // Upload to ImageBB
     const response = await axios.post(
       "https://api.imgbb.com/1/upload",
       formData,
       {
-        headers: formData.getHeaders(),
+        headers: {
+          ...formData.getHeaders(),
+        },
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
+        timeout: 30000, // 30 second timeout
       }
     );
 
@@ -73,15 +96,27 @@ const uploadToImageBB = async (imageData, fileName = "image") => {
       throw new Error("ImageBB upload failed: No success response");
     }
   } catch (error) {
-    console.error("ImageBB upload error:", error.message);
-
-    // Handle specific errors
+    console.error("❌ ImageBB upload error:", error.message);
+    
+    // Log more details for debugging
     if (error.response) {
-      throw new Error(
-        `ImageBB upload failed: ${
-          error.response.data?.error?.message || error.response.statusText
-        }`
-      );
+      console.error("ImageBB API Response:", {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+      });
+      
+      const errorMessage = error.response.data?.error?.message || 
+                          error.response.data?.error?.title ||
+                          error.response.statusText ||
+                          "Unknown error from ImageBB API";
+      
+      throw new Error(`ImageBB upload failed: ${errorMessage}`);
+    }
+    
+    if (error.request) {
+      console.error("No response received from ImageBB API");
+      throw new Error("Failed to connect to ImageBB service. Please check your internet connection.");
     }
 
     throw new Error(`Failed to upload image to ImageBB: ${error.message}`);

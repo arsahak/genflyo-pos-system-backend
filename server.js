@@ -1,4 +1,35 @@
 require("dotenv").config();
+
+// Validate required environment variables on startup
+const requiredEnvVars = {
+  MONGO_URI: "Database connection string",
+  JWT_SECRET: "JWT authentication secret",
+  // IMAGEBB_API_KEY is optional but recommended for image uploads
+};
+
+const optionalEnvVars = {
+  IMAGEBB_API_KEY: "Image upload functionality (optional but recommended)",
+};
+
+// Check required variables
+for (const [key, description] of Object.entries(requiredEnvVars)) {
+  if (!process.env[key]) {
+    console.warn(`⚠️  Warning: ${key} is not set - ${description}`);
+  }
+}
+
+// Check optional but recommended variables
+for (const [key, description] of Object.entries(optionalEnvVars)) {
+  if (!process.env[key]) {
+    console.warn(`⚠️  Warning: ${key} is not set - ${description}`);
+    console.warn(
+      `   Image uploads will fail without this. Add it to your .env file.`
+    );
+  } else {
+    console.log(`✅ ${key} is configured`);
+  }
+}
+
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -18,6 +49,7 @@ const authRoutes = require("./route/auth");
 const roleRoutes = require("./route/roles");
 const productRoutes = require("./route/products");
 const categoryRoutes = require("./route/categories");
+const brandRoutes = require("./route/brands");
 const inventoryRoutes = require("./route/inventory");
 const salesRoutes = require("./route/sales");
 const orderRoutes = require("./route/orders");
@@ -155,6 +187,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/stores", storeRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
+app.use("/api/brands", brandRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/sales", salesRoutes);
 app.use("/api/orders", orderRoutes);
