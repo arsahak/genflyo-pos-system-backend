@@ -204,6 +204,7 @@ const getAllProducts = async (req, res) => {
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
       .populate("storeId", "name address")
+      .populate("suppliers", "name company phone email")
       .sort(sort)
       .skip(skip)
       .limit(limitNum);
@@ -415,7 +416,8 @@ const getProductById = async (req, res) => {
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
       .populate("deletedBy", "name email")
-      .populate("storeId", "name address");
+      .populate("storeId", "name address")
+      .populate("suppliers", "name company phone email");
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
@@ -469,6 +471,7 @@ const createProduct = async (req, res) => {
       ingredients: parseArray(req.body.ingredients),
       allergens: parseArray(req.body.allergens),
       supplier: parseSupplier(req.body.supplier),
+      suppliers: parseArray(req.body.suppliers), // Parse suppliers array
       createdBy: req.userId,
     };
 
@@ -477,7 +480,8 @@ const createProduct = async (req, res) => {
 
     const newProduct = await Product.findById(product._id)
       .populate("createdBy", "name email")
-      .populate("storeId", "name address");
+      .populate("storeId", "name address")
+      .populate("suppliers", "name company phone email");
 
     console.log(`✅ Product created: ${product.name} by ${req.user.name}`);
 
@@ -596,6 +600,7 @@ const updateProduct = async (req, res) => {
     if (req.body.ingredients) updateData.ingredients = parseArray(req.body.ingredients);
     if (req.body.allergens) updateData.allergens = parseArray(req.body.allergens);
     if (req.body.supplier) updateData.supplier = parseSupplier(req.body.supplier);
+    if (req.body.suppliers) updateData.suppliers = parseArray(req.body.suppliers);
 
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
       new: true,

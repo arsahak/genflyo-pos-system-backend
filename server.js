@@ -54,10 +54,12 @@ const inventoryRoutes = require("./route/inventory");
 const salesRoutes = require("./route/sales");
 const orderRoutes = require("./route/orders");
 const customerRoutes = require("./route/customers");
+const supplierRoutes = require("./route/suppliers");
 const reportRoutes = require("./route/reports");
 const storeRoutes = require("./route/stores");
 const userRoutes = require("./route/users");
 const settingsRoutes = require("./route/settings");
+const dashboardRoutes = require("./route/dashboard");
 
 const app = express();
 const server = http.createServer(app);
@@ -192,8 +194,10 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/sales", salesRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/suppliers", supplierRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 // Socket.IO connection handler
 io.on("connection", (socket) => {

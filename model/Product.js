@@ -59,6 +59,10 @@ const productSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  suppliers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Supplier'
+  }],
 
   // Pricing
   price: {
