@@ -18,6 +18,11 @@ const getDashboardOverview = async (req, res) => {
       ? new Date(from)
       : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+    // Today's date range (start of day to now)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+
     // Previous period for comparison
     const periodDuration = endDate.getTime() - startDate.getTime();
     const prevStartDate = new Date(startDate.getTime() - periodDuration);
@@ -39,12 +44,20 @@ const getDashboardOverview = async (req, res) => {
       createdAt: { $gte: prevStartDate, $lte: prevEndDate },
     };
 
+    // Today's query
+    const todayQuery = {
+      ...baseQuery,
+      createdAt: { $gte: todayStart, $lte: todayEnd },
+    };
+
     // Fetch all data in parallel
     const [
       currentSales,
       prevSales,
+      todaySales,
       currentOrders,
       prevOrders,
+      todayOrders,
       totalCustomers,
       totalSuppliers,
       lowStockProducts,
@@ -55,10 +68,14 @@ const getDashboardOverview = async (req, res) => {
       Sale.find({ ...currentQuery, status: { $ne: "refunded" } }),
       // Previous sales
       Sale.find({ ...prevQuery, status: { $ne: "refunded" } }),
+      // Today's sales
+      Sale.find({ ...todayQuery, status: { $ne: "refunded" } }),
       // Current orders
       Order.find(currentQuery),
       // Previous orders
       Order.find(prevQuery),
+      // Today's orders
+      Order.find(todayQuery),
       // Total customers
       Customer.countDocuments({ isActive: true }),
       // Total suppliers (if you have a Supplier model, otherwise return 0)
@@ -96,6 +113,7 @@ const getDashboardOverview = async (req, res) => {
     // Calculate sales statistics
     const currentSalesStats = calculateSalesStats(currentSales);
     const prevSalesStats = calculateSalesStats(prevSales);
+    const todaySalesStats = calculateSalesStats(todaySales);
 
     // Calculate sales returns
     const salesReturns = await Sale.find({
@@ -104,6 +122,10 @@ const getDashboardOverview = async (req, res) => {
     });
     const prevSalesReturns = await Sale.find({
       ...prevQuery,
+      status: { $in: ["refunded", "partially_refunded"] },
+    });
+    const todaySalesReturns = await Sale.find({
+      ...todayQuery,
       status: { $in: ["refunded", "partially_refunded"] },
     });
 
@@ -115,12 +137,18 @@ const getDashboardOverview = async (req, res) => {
       (sum, sale) => sum + sale.total,
       0
     );
+    const todayTotalSalesReturn = todaySalesReturns.reduce(
+      (sum, sale) => sum + sale.total,
+      0
+    );
 
     // Calculate purchase statistics (placeholder - implement based on your Purchase model)
     const totalPurchase = 0;
     const prevTotalPurchase = 0;
+    const todayTotalPurchase = 0;
     const totalPurchaseReturn = 0;
     const prevTotalPurchaseReturn = 0;
+    const todayTotalPurchaseReturn = 0;
 
     // Calculate expenses (placeholder - implement based on your Expense model)
     const totalExpenses = 0;
@@ -144,6 +172,13 @@ const getDashboardOverview = async (req, res) => {
 
     // Format response
     const overview = {
+      // Today's KPIs (NEW)
+      todaysSales: todaySalesStats.totalRevenue,
+      todaysSalesReturn: todayTotalSalesReturn,
+      todaysPurchase: todayTotalPurchase,
+      todaysPurchaseReturn: todayTotalPurchaseReturn,
+      todaysOrderCount: todayOrders.length,
+
       // Main KPIs with comparison
       totalSales: {
         current: currentSalesStats.totalRevenue,
