@@ -60,6 +60,7 @@ const storeRoutes = require("./route/stores");
 const userRoutes = require("./route/users");
 const settingsRoutes = require("./route/settings");
 const dashboardRoutes = require("./route/dashboard");
+const barcodeRoutes = require("./route/barcode");
 
 const app = express();
 const server = http.createServer(app);
@@ -198,6 +199,7 @@ app.use("/api/suppliers", supplierRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/barcodes", barcodeRoutes);
 
 // Socket.IO connection handler
 io.on("connection", (socket) => {
