@@ -43,6 +43,9 @@ const userSchema = new mongoose.Schema({
   },
   // Comprehensive permissions object
   permissions: {
+    // Dashboard Permissions
+    canViewDashboard: { type: Boolean, default: true },
+
     // POS & Sales Permissions
     canViewSales: { type: Boolean, default: false },
     canCreateSales: { type: Boolean, default: false },
@@ -50,6 +53,14 @@ const userSchema = new mongoose.Schema({
     canDeleteSales: { type: Boolean, default: false },
     canProcessRefunds: { type: Boolean, default: false },
     canViewSalesReports: { type: Boolean, default: false },
+
+    // Order Management Permissions
+    canViewOrders: { type: Boolean, default: false },
+    canCreateOrders: { type: Boolean, default: false },
+    canEditOrders: { type: Boolean, default: false },
+    canDeleteOrders: { type: Boolean, default: false },
+    canApproveOrders: { type: Boolean, default: false },
+    canCancelOrders: { type: Boolean, default: false },
 
     // Product Management Permissions
     canViewProducts: { type: Boolean, default: false },
@@ -60,6 +71,13 @@ const userSchema = new mongoose.Schema({
     canViewInventory: { type: Boolean, default: false },
     canManageInventory: { type: Boolean, default: false },
     canAdjustStock: { type: Boolean, default: false },
+
+    // Supplier Management Permissions
+    canViewSuppliers: { type: Boolean, default: false },
+    canAddSuppliers: { type: Boolean, default: false },
+    canEditSuppliers: { type: Boolean, default: false },
+    canDeleteSuppliers: { type: Boolean, default: false },
+    canManageSuppliers: { type: Boolean, default: false },
 
     // Customer Management Permissions
     canViewCustomers: { type: Boolean, default: false },
@@ -82,11 +100,16 @@ const userSchema = new mongoose.Schema({
     canDeleteStores: { type: Boolean, default: false },
     canManageStoreSettings: { type: Boolean, default: false },
 
+    // Barcode Management Permissions
+    canViewBarcodes: { type: Boolean, default: false },
+    canGenerateBarcodes: { type: Boolean, default: false },
+    canDeleteBarcodes: { type: Boolean, default: false },
+    canManageBarcodes: { type: Boolean, default: false },
+
     // Reports & Analytics Permissions
     canViewReports: { type: Boolean, default: false },
     canExportReports: { type: Boolean, default: false },
     canViewAnalytics: { type: Boolean, default: false },
-    canViewDashboard: { type: Boolean, default: true },
 
     // System Settings Permissions
     canManageSettings: { type: Boolean, default: false },

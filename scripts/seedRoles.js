@@ -8,11 +8,14 @@ const defaultRoles = [
     name: 'super_admin',
     description: 'Super Administrator with full system access',
     permissions: [
+      { resource: 'dashboard', actions: ['read'] },
       { resource: 'products', actions: ['create', 'read', 'update', 'delete', 'manage'] },
       { resource: 'inventory', actions: ['create', 'read', 'update', 'delete', 'manage'] },
       { resource: 'sales', actions: ['create', 'read', 'update', 'delete', 'manage'] },
       { resource: 'orders', actions: ['create', 'read', 'update', 'delete', 'manage'] },
       { resource: 'customers', actions: ['create', 'read', 'update', 'delete', 'manage'] },
+      { resource: 'suppliers', actions: ['create', 'read', 'update', 'delete', 'manage'] },
+      { resource: 'barcodes', actions: ['create', 'read', 'delete', 'manage'] },
       { resource: 'reports', actions: ['create', 'read', 'update', 'delete', 'manage'] },
       { resource: 'users', actions: ['create', 'read', 'update', 'delete', 'manage'] },
       { resource: 'stores', actions: ['create', 'read', 'update', 'delete', 'manage'] },
@@ -25,11 +28,14 @@ const defaultRoles = [
     name: 'admin',
     description: 'Administrator with management access',
     permissions: [
+      { resource: 'dashboard', actions: ['read'] },
       { resource: 'products', actions: ['create', 'read', 'update', 'delete'] },
       { resource: 'inventory', actions: ['create', 'read', 'update', 'delete'] },
       { resource: 'sales', actions: ['create', 'read', 'update'] },
       { resource: 'orders', actions: ['create', 'read', 'update'] },
       { resource: 'customers', actions: ['create', 'read', 'update', 'delete'] },
+      { resource: 'suppliers', actions: ['create', 'read', 'update', 'delete'] },
+      { resource: 'barcodes', actions: ['create', 'read', 'delete'] },
       { resource: 'reports', actions: ['read'] },
       { resource: 'users', actions: ['read', 'create', 'update'] },
       { resource: 'stores', actions: ['read', 'update'] },
@@ -41,42 +47,25 @@ const defaultRoles = [
     name: 'manager',
     description: 'Store Manager with operational access',
     permissions: [
+      { resource: 'dashboard', actions: ['read'] },
       { resource: 'products', actions: ['read', 'update'] },
       { resource: 'inventory', actions: ['read', 'update'] },
       { resource: 'sales', actions: ['read', 'create'] },
       { resource: 'orders', actions: ['read', 'update'] },
       { resource: 'customers', actions: ['read', 'create', 'update'] },
+      { resource: 'suppliers', actions: ['read', 'update'] },
+      { resource: 'barcodes', actions: ['read', 'create'] },
       { resource: 'reports', actions: ['read'] },
       { resource: 'analytics', actions: ['read'] }
     ],
     isSystemRole: true
   },
   {
-    name: 'editor',
-    description: 'Editor can create and edit products',
-    permissions: [
-      { resource: 'products', actions: ['create', 'read', 'update'] },
-      { resource: 'inventory', actions: ['read', 'update'] }
-    ],
-    isSystemRole: true
-  },
-  {
-    name: 'seller',
-    description: 'Seller can only view and create sales',
-    permissions: [
-      { resource: 'products', actions: ['read'] },
-      { resource: 'sales', actions: ['create', 'read'] },
-      { resource: 'customers', actions: ['read', 'create'] }
-    ],
-    isSystemRole: true
-  },
-  {
     name: 'cashier',
-    description: 'Cashier for processing sales',
+    description: 'Cashier for processing sales - Limited access to dashboard and sales only',
     permissions: [
-      { resource: 'products', actions: ['read'] },
-      { resource: 'sales', actions: ['create', 'read'] },
-      { resource: 'customers', actions: ['read'] }
+      { resource: 'dashboard', actions: ['read'] },
+      { resource: 'sales', actions: ['create', 'read'] }
     ],
     isSystemRole: true
   }

@@ -6,7 +6,8 @@ const permissionSchema = new mongoose.Schema({
     required: true,
     enum: [
       'products', 'inventory', 'sales', 'orders', 'customers', 
-      'reports', 'users', 'stores', 'settings', 'analytics'
+      'suppliers', 'reports', 'users', 'stores', 'barcodes',
+      'settings', 'analytics', 'dashboard'
     ]
   },
   actions: [{
