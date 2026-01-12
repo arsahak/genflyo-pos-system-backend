@@ -122,6 +122,18 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// Debug middleware to log all requests to /api/brands
+app.use("/api/brands", (req, res, next) => {
+  if (req.method === "POST") {
+    console.log("🌐 ===== INCOMING BRAND CREATE REQUEST =====");
+    console.log("📍 URL:", req.url);
+    console.log("📦 req.body:", req.body);
+    console.log("📋 Content-Type:", req.headers["content-type"]);
+    console.log("==========================================");
+  }
+  next();
+});
+
 // Serve static files from uploads directory
 app.use("/uploads", express.static("uploads"));
 

@@ -34,11 +34,12 @@ exports.getAllBrands = async (req, res) => {
     }
 
 
-    // Search by name or description
+    // Search by name, description, or country
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
+        { country: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -57,8 +58,21 @@ exports.getAllBrands = async (req, res) => {
       Brand.countDocuments(query),
     ]);
 
+    // Ensure all brands have the fields with default values
+    const brandsWithDefaults = brands.map(brand => ({
+      _id: brand._id,
+      name: brand.name,
+      description: brand.description || '',
+      country: brand.country || '',
+      contact: brand.contact || '',
+      isActive: brand.isActive !== undefined ? brand.isActive : true,
+      createdAt: brand.createdAt,
+      updatedAt: brand.updatedAt,
+      __v: brand.__v
+    }));
+
     res.status(200).json({
-      brands,
+      brands: brandsWithDefaults,
       pagination: {
         total,
         page: parseInt(page),
@@ -88,9 +102,22 @@ exports.getBrandById = async (req, res) => {
       return res.status(404).json({ message: "Brand not found" });
     }
 
-    res.status(200).json(brand);
+    // Return only the essential fields
+    const brandData = {
+      _id: brand._id,
+      name: brand.name,
+      description: brand.description || '',
+      country: brand.country || '',
+      contact: brand.contact || '',
+      isActive: brand.isActive !== undefined ? brand.isActive : true,
+      createdAt: brand.createdAt,
+      updatedAt: brand.updatedAt,
+      __v: brand.__v
+    };
+
+    res.status(200).json(brandData);
   } catch (error) {
-    console.error("Error fetching brand:", error);
+    console.error("❌ Error fetching brand:", error);
     res.status(500).json({
       message: "Failed to fetch brand",
       error: error.message,
@@ -115,7 +142,9 @@ exports.createBrand = async (req, res) => {
       });
     }
 
-    const { name, description, isActive } = req.body;
+    console.log("🔍 Backend received req.body:", req.body);
+    const { name, description, country, contact, isActive } = req.body;
+    console.log("🔍 Extracted values:", { name, description, country, contact, isActive });
 
     // Check if brand already exists
     const existingBrand = await Brand.findOne({
@@ -131,12 +160,25 @@ exports.createBrand = async (req, res) => {
     // Prepare brand data
     const brandData = {
       name,
-      description,
+      description: description || '',
+      country: country || '',
+      contact: contact || '',
       isActive: isActive !== undefined ? isActive : true,
     };
 
+    console.log("💾 About to save brand with data:", brandData);
+
     // Create brand
     const brand = await Brand.create(brandData);
+    
+    console.log("✅ Brand saved to database:", {
+      _id: brand._id,
+      name: brand.name,
+      description: brand.description,
+      country: brand.country,
+      contact: brand.contact,
+      isActive: brand.isActive
+    });
 
     res.status(201).json({
       message: "Brand created successfully",
@@ -169,7 +211,7 @@ exports.updateBrand = async (req, res) => {
     }
 
     const { id } = req.params;
-    const { name, description, isActive } = req.body;
+    const { name, description, country, contact, isActive } = req.body;
 
     // Find brand
     const brand = await Brand.findById(id);
@@ -197,6 +239,8 @@ exports.updateBrand = async (req, res) => {
 
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
+    if (country !== undefined) updateData.country = country;
+    if (contact !== undefined) updateData.contact = contact;
     if (isActive !== undefined) updateData.isActive = isActive;
 
     // Update brand
