@@ -88,6 +88,27 @@ const productSchema = new mongoose.Schema({
     max: 100
   },
 
+  // Unit Conversion & Bulk Pricing (for Pharmacy/Wholesale)
+  purchaseUnit: {
+    type: String,
+    default: 'Box',
+    trim: true
+  },
+  sellingUnit: {
+    type: String,
+    default: 'Piece',
+    trim: true
+  },
+  conversionFactor: {
+    type: Number,
+    min: 1,
+    default: 1
+  },
+  purchasePriceBox: {
+    type: Number,
+    min: 0
+  },
+
   // Stock Management
   stock: {
     type: Number,

@@ -39,6 +39,19 @@ const parseSupplier = (supplierData) => {
 };
 
 /**
+ * Parse location object from string or return object
+ */
+const parseLocation = (locationData) => {
+  if (!locationData) return undefined;
+  if (typeof locationData === "object") return locationData;
+  try {
+    return JSON.parse(locationData);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
  * Upload images to ImageBB
  */
 const uploadImages = async (files) => {
@@ -461,9 +474,10 @@ const createProduct = async (req, res) => {
       }
     }
 
-    // Create product data
+    // Create product data - extract location separately to ensure proper parsing
+    const { location: rawLocation, ...restBody } = req.body;
     const productData = {
-      ...req.body,
+      ...restBody,
       mainImage: mainImageData,
       featureImages: featureImagesData,
       tags: parseArray(req.body.tags),
@@ -472,8 +486,15 @@ const createProduct = async (req, res) => {
       allergens: parseArray(req.body.allergens),
       supplier: parseSupplier(req.body.supplier),
       suppliers: parseArray(req.body.suppliers), // Parse suppliers array
+      location: parseLocation(rawLocation), // Parse location object from JSON string
       createdBy: req.userId,
     };
+
+    // Debug log to verify location parsing
+    if (rawLocation) {
+      console.log("📍 Location raw:", rawLocation);
+      console.log("📍 Location parsed:", productData.location);
+    }
 
     const product = new Product(productData);
     await product.save();
@@ -586,21 +607,27 @@ const updateProduct = async (req, res) => {
       }
     }
 
-    // Update product data
+    // Update product data - extract location separately to ensure proper parsing
+    const { location: rawLocation, ...restBody } = req.body;
     const updateData = {
-      ...req.body,
+      ...restBody,
       mainImage: mainImageData,
       featureImages: featureImagesData,
       updatedBy: req.userId,
     };
 
-    // Parse arrays
+    // Parse arrays and objects
     if (req.body.tags) updateData.tags = parseArray(req.body.tags);
     if (req.body.searchKeywords) updateData.searchKeywords = parseArray(req.body.searchKeywords);
     if (req.body.ingredients) updateData.ingredients = parseArray(req.body.ingredients);
     if (req.body.allergens) updateData.allergens = parseArray(req.body.allergens);
     if (req.body.supplier) updateData.supplier = parseSupplier(req.body.supplier);
     if (req.body.suppliers) updateData.suppliers = parseArray(req.body.suppliers);
+    if (rawLocation) {
+      updateData.location = parseLocation(rawLocation);
+      console.log("📍 Update - Location raw:", rawLocation);
+      console.log("📍 Update - Location parsed:", updateData.location);
+    }
 
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
