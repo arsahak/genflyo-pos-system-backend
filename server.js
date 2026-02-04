@@ -212,6 +212,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/barcodes", barcodeRoutes);
+app.use("/api/external-sources", require("./route/ExternalSource"));
 
 // Socket.IO connection handler
 io.on("connection", (socket) => {

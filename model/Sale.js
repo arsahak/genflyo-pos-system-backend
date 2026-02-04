@@ -15,7 +15,15 @@ const saleItemSchema = new mongoose.Schema({
     default: 0
   },
   tax: Number,
-  total: Number
+  total: Number,
+  isSourced: {
+    type: Boolean,
+    default: false
+  },
+  sourcingCost: {
+    type: Number,
+    default: 0
+  }
 });
 
 const paymentSchema = new mongoose.Schema({

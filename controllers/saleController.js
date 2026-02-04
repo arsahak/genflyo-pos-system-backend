@@ -1,6 +1,7 @@
 const Sale = require("../model/Sale");
 const Inventory = require("../model/Inventory");
 const Product = require("../model/Product");
+const SourcedItem = require("../model/SourcedItem");
 
 /**
  * Create sale
@@ -27,6 +28,8 @@ const createSale = async (req, res) => {
     let tax = 0;
 
     const saleItems = [];
+    const sourcedItemsToCreate = [];
+
     for (const item of items) {
       const product = await Product.findById(item.productId);
       if (!product) throw new Error(`Product ${item.productId} not found`);
@@ -35,13 +38,24 @@ const createSale = async (req, res) => {
         throw new Error(`Product ${product.name} is not active`);
       }
 
-      // Get unit price - support both variants and direct price
+      // Check if item is externally sourced
+      const isSourced = item.isSourced || false;
+      const sourcingCost = item.sourcingCost || 0;
+
+      // Get unit price description
       let unitPrice = 0;
-      if (item.variantId !== undefined && product.variants && product.variants.length > 0) {
+      // If sourced, use the custom price from cart if provided (though frontend sends it as unitPrice in payload logic usually, let's stick to standard flow or override)
+      // Actually standard flow uses product price. If sourced, we sent 'price' in item.price? 
+      // Req.body.items usually has productId, quantity... let's assume item has price override if allowed
+      
+      // But typically we fetch price from DB for security. 
+      // For sourced items, we MUST use the price sent from frontend because it's a dynamic deal.
+      if (isSourced && item.price) {
+          unitPrice = item.price; 
+      } else if (item.variantId !== undefined && product.variants && product.variants.length > 0) {
         const variant = product.variants[item.variantId];
         unitPrice = variant?.price || 0;
       } else {
-        // Use direct price field
         unitPrice = product.price || 0;
       }
 
@@ -65,14 +79,29 @@ const createSale = async (req, res) => {
         discount: itemDiscount,
         tax: itemTax,
         total: itemTotal,
+        isSourced,
+        sourcingCost
       });
+
+      if (isSourced) {
+         sourcedItemsToCreate.push({
+            storeId,
+            productId: item.productId,
+            productName: product.name,
+            quantity: item.quantity,
+            sourcingCost: sourcingCost,
+            salePrice: unitPrice,
+            profit: (unitPrice - sourcingCost) * item.quantity,
+            sourcedBy: req.userId
+         });
+      }
 
       subtotal += itemSubtotal;
       totalDiscount += itemDiscount;
       tax += itemTax;
 
-      // Update product stock (if no inventory system)
-      if (product.stock !== undefined) {
+      // Update product stock (for NON-SOURCED items only)
+      if (!isSourced && product.stock !== undefined) {
         if (product.stock < item.quantity) {
           throw new Error(
             `Insufficient stock for ${product.name}. Available: ${product.stock}, Required: ${item.quantity}`
@@ -82,14 +111,16 @@ const createSale = async (req, res) => {
         await product.save({ session });
       }
 
-      // Update inventory if exists
-      const inventory = await Inventory.findOne({ productId: item.productId, storeId }).session(session);
-      if (inventory) {
-        if (inventory.quantity < item.quantity) {
-          throw new Error(`Insufficient inventory for ${product.name}`);
+      // Update inventory (for NON-SOURCED items only)
+      if (!isSourced) {
+        const inventory = await Inventory.findOne({ productId: item.productId, storeId }).session(session);
+        if (inventory) {
+          if (inventory.quantity < item.quantity) {
+             throw new Error(`Insufficient inventory for ${product.name}`);
+          }
+          inventory.quantity -= item.quantity;
+          await inventory.save({ session });
         }
-        inventory.quantity -= item.quantity;
-        await inventory.save({ session });
       }
     }
 
@@ -115,6 +146,14 @@ const createSale = async (req, res) => {
     });
 
     await sale.save({ session });
+    
+    // Save sourced items history
+    if (sourcedItemsToCreate.length > 0) {
+      // Add saleId to each
+      const sourcedDocs = sourcedItemsToCreate.map(si => ({...si, saleId: sale._id}));
+      await SourcedItem.insertMany(sourcedDocs, { session });
+    }
+
     await session.commitTransaction();
 
     // Populate before sending response
