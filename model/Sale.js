@@ -29,7 +29,7 @@ const saleItemSchema = new mongoose.Schema({
 const paymentSchema = new mongoose.Schema({
   method: {
     type: String,
-    enum: ['cash', 'card', 'mobile_wallet', 'gift_card', 'voucher'],
+    enum: ['cash', 'card', 'mobile_wallet', 'gift_card', 'voucher', 'due'],
     required: true
   },
   amount: Number,
@@ -68,8 +68,13 @@ const saleSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['completed', 'refunded', 'partially_refunded'],
+    enum: ['completed', 'refunded', 'partially_refunded', 'due'],
     default: 'completed'
+  },
+  dueAmount: {
+    type: Number,
+    default: 0,
+    min: 0
   },
   notes: String
 }, {

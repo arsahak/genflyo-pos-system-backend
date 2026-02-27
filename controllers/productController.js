@@ -144,6 +144,7 @@ const getAllProducts = async (req, res) => {
       maxPrice,
       inStock,
       expiring,
+      expired,
       lowStock,
       featured,
       sortBy = "createdAt",
@@ -157,6 +158,7 @@ const getAllProducts = async (req, res) => {
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
+        { genericName: { $regex: search, $options: "i" } },
         { sku: { $regex: search, $options: "i" } },
         { barcode: { $regex: search, $options: "i" } },
         { brand: { $regex: search, $options: "i" } },
@@ -193,14 +195,20 @@ const getAllProducts = async (req, res) => {
       query.isFeatured = true;
     }
 
-    // Expiring soon filter
+    // Expiring Soon — has expiryDate set, not yet expired, within next 90 days
     if (expiring === "true") {
-      const today = new Date();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
       const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 30); // Next 30 days
+      futureDate.setDate(futureDate.getDate() + 90);
+      query.expiryDate = { $exists: true, $ne: null, $gte: todayStart, $lte: futureDate };
+    }
 
-      query.hasExpiry = true;
-      query.expiryDate = { $gte: today, $lte: futureDate };
+    // Expired — expiryDate is in the past
+    if (expired === "true") {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      query.expiryDate = { $exists: true, $ne: null, $lt: todayStart };
     }
 
     // Pagination
@@ -244,6 +252,9 @@ const getAllProducts = async (req, res) => {
 /**
  * Get products expiring soon
  */
+/**
+ * GET /api/products/alerts/expiring - Products with expiryDate today or within N days (not yet expired)
+ */
 const getExpiringProducts = async (req, res) => {
   try {
     const permissionError = checkPermission(req.user, "canViewProducts", "view products");
@@ -251,16 +262,16 @@ const getExpiringProducts = async (req, res) => {
       return res.status(permissionError.status).json({ message: permissionError.message });
     }
 
-    const { days = 30 } = req.query;
+    const { days = 90 } = req.query;
 
-    const today = new Date();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + parseInt(days));
 
     const expiringProducts = await Product.find({
       isActive: true,
-      hasExpiry: true,
-      expiryDate: { $gte: today, $lte: futureDate },
+      expiryDate: { $exists: true, $ne: null, $gte: todayStart, $lte: futureDate },
     })
       .populate("createdBy", "name email")
       .sort({ expiryDate: 1 });
@@ -272,6 +283,36 @@ const getExpiringProducts = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching expiring products:", error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * GET /api/products/alerts/expired - Products whose expiryDate has already passed
+ */
+const getExpiredProducts = async (req, res) => {
+  try {
+    const permissionError = checkPermission(req.user, "canViewProducts", "view products");
+    if (permissionError) {
+      return res.status(permissionError.status).json({ message: permissionError.message });
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const expiredProducts = await Product.find({
+      isActive: true,
+      expiryDate: { $exists: true, $ne: null, $lt: todayStart },
+    })
+      .populate("createdBy", "name email")
+      .sort({ expiryDate: -1 });
+
+    res.json({
+      products: expiredProducts,
+      count: expiredProducts.length,
+    });
+  } catch (error) {
+    console.error("Error fetching expired products:", error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -693,6 +734,7 @@ const deleteProduct = async (req, res) => {
 module.exports = {
   getAllProducts,
   getExpiringProducts,
+  getExpiredProducts,
   getLowStockProducts,
   getCategories,
   getBrands,

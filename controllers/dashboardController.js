@@ -1,8 +1,11 @@
+const mongoose = require("mongoose");
 const Sale = require("../model/Sale");
 const Order = require("../model/Order");
 const Customer = require("../model/Customer");
 const Product = require("../model/Product");
 const Inventory = require("../model/Inventory");
+const Supplier = require("../model/Supplier");
+const SourcedItem = require("../model/SourcedItem");
 
 /**
  * Get dashboard overview data
@@ -28,7 +31,7 @@ const getDashboardOverview = async (req, res) => {
     const prevStartDate = new Date(startDate.getTime() - periodDuration);
     const prevEndDate = new Date(startDate);
 
-    // Build base query
+    // Build base query (storeId stays as string — Mongoose auto-casts in find())
     const baseQuery = {};
     if (storeId) baseQuery.storeId = storeId;
 
@@ -50,120 +53,201 @@ const getDashboardOverview = async (req, res) => {
       createdAt: { $gte: todayStart, $lte: todayEnd },
     };
 
+    // Aggregation pipelines skip Mongoose schema casting, so storeId MUST be
+    // an ObjectId explicitly — a raw string will never match stored ObjectIds.
+    const storeObjectId =
+      storeId && mongoose.Types.ObjectId.isValid(storeId)
+        ? new mongoose.Types.ObjectId(storeId)
+        : null;
+    const aggBase = storeObjectId ? { storeId: storeObjectId } : {};
+    const aggCurrentQuery = { ...aggBase, createdAt: { $gte: startDate, $lte: endDate } };
+    const aggPrevQuery   = { ...aggBase, createdAt: { $gte: prevStartDate, $lte: prevEndDate } };
+
+    // Sourced-item date queries (for purchase stats)
+    const sourcedCurrentQuery = {
+      ...(storeId && { storeId }),
+      createdAt: { $gte: startDate, $lte: endDate },
+    };
+    const sourcedPrevQuery = {
+      ...(storeId && { storeId }),
+      createdAt: { $gte: prevStartDate, $lte: prevEndDate },
+    };
+    const sourcedTodayQuery = {
+      ...(storeId && { storeId }),
+      createdAt: { $gte: todayStart, $lte: todayEnd },
+    };
+
     // Fetch all data in parallel
     const [
       currentSales,
       prevSales,
       todaySales,
-      currentOrders,
-      prevOrders,
-      todayOrders,
+      currentOrderCount,
+      todayOrderCount,
       totalCustomers,
       totalSuppliers,
       lowStockProducts,
       recentSales,
       topProducts,
+      // Sales returns
+      salesReturns,
+      prevSalesReturns,
+      todaySalesReturns,
+      // Due sales (Invoice Due) — all-time outstanding + period-specific
+      allDueSales,
+      prevDueSales,
+      // Sourced items (Total Purchase)
+      currentSourcedItems,
+      prevSourcedItems,
+      todaySourcedItems,
     ] = await Promise.all([
-      // Current sales
-      Sale.find({ ...currentQuery, status: { $ne: "refunded" } }),
-      // Previous sales
-      Sale.find({ ...prevQuery, status: { $ne: "refunded" } }),
-      // Today's sales
-      Sale.find({ ...todayQuery, status: { $ne: "refunded" } }),
-      // Current orders
-      Order.find(currentQuery),
-      // Previous orders
-      Order.find(prevQuery),
-      // Today's orders
-      Order.find(todayQuery),
-      // Total customers
+      // Completed sales — only fetch fields needed for revenue/discount/tax sums
+      Sale.find({ ...currentQuery, status: { $nin: ["refunded", "due"] } }).select("total discount tax"),
+      Sale.find({ ...prevQuery,    status: { $nin: ["refunded", "due"] } }).select("total discount tax"),
+      Sale.find({ ...todayQuery,   status: { $nin: ["refunded", "due"] } }).select("total discount tax"),
+      // Order counts — countDocuments is far cheaper than loading full documents
+      Order.countDocuments(currentQuery),
+      Order.countDocuments(todayQuery),
+      // Customer / supplier totals
       Customer.countDocuments({ isActive: true }),
-      // Total suppliers (if you have a Supplier model, otherwise return 0)
-      Promise.resolve(0), // Placeholder for suppliers
-      // Low stock products
+      Supplier.countDocuments({ isActive: true }),
+      // Low stock
       Inventory.find({
         ...(storeId && { storeId }),
         $expr: { $lte: ["$quantity", "$minQuantity"] },
       })
         .populate("productId", "name")
         .limit(10),
-      // Recent sales
+      // Recent sales (completed + due)
       Sale.find({ ...currentQuery, status: { $ne: "refunded" } })
         .sort({ createdAt: -1 })
         .limit(10)
         .populate("customerId", "name")
         .populate("cashierId", "name"),
-      // Top selling products
+      // Top selling products — uses aggCurrentQuery so storeId is a proper ObjectId
       Sale.aggregate([
-        { $match: currentQuery },
+        { $match: { ...aggCurrentQuery, status: { $ne: "refunded" } } },
         { $unwind: "$items" },
         {
           $group: {
             _id: "$items.productId",
             productName: { $first: "$items.productName" },
-            totalQuantity: { $sum: "$items.quantity" },
-            totalRevenue: { $sum: "$items.total" },
+            totalQuantity: { $sum: { $abs: "$items.quantity" } },
+            totalRevenue: { $sum: { $abs: "$items.total" } },
           },
         },
+        // Exclude items that had no productId (null group key)
+        { $match: { _id: { $ne: null }, productName: { $ne: null } } },
         { $sort: { totalRevenue: -1 } },
-        { $limit: 5 },
+        { $limit: 100 },
       ]),
+      // Sales returns — only total field needed
+      Sale.find({ ...currentQuery, status: { $in: ["refunded", "partially_refunded"] } }).select("total"),
+      Sale.find({ ...prevQuery,    status: { $in: ["refunded", "partially_refunded"] } }).select("total"),
+      Sale.find({ ...todayQuery,   status: { $in: ["refunded", "partially_refunded"] } }).select("total"),
+      // Invoice Due: all-time outstanding (not filtered by period)
+      Sale.find({ ...(storeId ? { storeId } : {}), status: "due" }, "dueAmount createdAt"),
+      Sale.find({ ...prevQuery, status: "due" }, "dueAmount"),
+      // Sourced Items (purchase costs)
+      SourcedItem.find(sourcedCurrentQuery, "sourcingCost quantity"),
+      SourcedItem.find(sourcedPrevQuery, "sourcingCost quantity"),
+      SourcedItem.find(sourcedTodayQuery, "sourcingCost quantity"),
     ]);
 
-    // Calculate sales statistics
+    // ── Sales stats ──────────────────────────────────────────────────────────
     const currentSalesStats = calculateSalesStats(currentSales);
     const prevSalesStats = calculateSalesStats(prevSales);
     const todaySalesStats = calculateSalesStats(todaySales);
 
-    // Calculate sales returns
-    const salesReturns = await Sale.find({
-      ...currentQuery,
-      status: { $in: ["refunded", "partially_refunded"] },
-    });
-    const prevSalesReturns = await Sale.find({
-      ...prevQuery,
-      status: { $in: ["refunded", "partially_refunded"] },
-    });
-    const todaySalesReturns = await Sale.find({
-      ...todayQuery,
-      status: { $in: ["refunded", "partially_refunded"] },
-    });
+    // ── Sales Returns ────────────────────────────────────────────────────────
+    const totalSalesReturn = salesReturns.reduce((sum, s) => sum + (s.total || 0), 0);
+    const prevTotalSalesReturn = prevSalesReturns.reduce((sum, s) => sum + (s.total || 0), 0);
+    const todayTotalSalesReturn = todaySalesReturns.reduce((sum, s) => sum + (s.total || 0), 0);
 
-    const totalSalesReturn = salesReturns.reduce(
-      (sum, sale) => sum + sale.total,
-      0
+    // ── Total Purchase (from SourcedItem sourcing costs) ─────────────────────
+    const totalPurchase = currentSourcedItems.reduce(
+      (sum, item) => sum + (item.sourcingCost || 0) * (item.quantity || 0), 0
     );
-    const prevTotalSalesReturn = prevSalesReturns.reduce(
-      (sum, sale) => sum + sale.total,
-      0
+    const prevTotalPurchase = prevSourcedItems.reduce(
+      (sum, item) => sum + (item.sourcingCost || 0) * (item.quantity || 0), 0
     );
-    const todayTotalSalesReturn = todaySalesReturns.reduce(
-      (sum, sale) => sum + sale.total,
-      0
+    const todayTotalPurchase = todaySourcedItems.reduce(
+      (sum, item) => sum + (item.sourcingCost || 0) * (item.quantity || 0), 0
     );
 
-    // Calculate purchase statistics (placeholder - implement based on your Purchase model)
-    const totalPurchase = 0;
-    const prevTotalPurchase = 0;
-    const todayTotalPurchase = 0;
+    // ── Total Purchase Return ─────────────────────────────────────────────────
+    // No purchase-return model yet; kept as 0 until a Purchase model is added
     const totalPurchaseReturn = 0;
     const prevTotalPurchaseReturn = 0;
     const todayTotalPurchaseReturn = 0;
 
-    // Calculate expenses (placeholder - implement based on your Expense model)
-    const totalExpenses = 0;
-    const prevTotalExpenses = 0;
+    // ── Total Expenses (COGS) ─────────────────────────────────────────────────
+    // For SOURCED items  → use items.sourcingCost (the actual cost paid per unit
+    //   for that specific deal, stored on the sale item at the time of purchase).
+    // For REGULAR items  → use product.cost (standard cost from the Product doc).
+    // This prevents profit inflation where product.cost << actual sourcing cost.
+    const buildCogsPipeline = (matchQuery) => [
+      { $match: { ...matchQuery, status: { $nin: ["refunded", "due"] } } },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalCOGS: {
+            $sum: {
+              $multiply: [
+                { $abs: "$items.quantity" },
+                {
+                  $cond: {
+                    if: { $eq: ["$items.isSourced", true] },
+                    // Sourced item: use the actual cost paid at sourcing time
+                    then: { $ifNull: ["$items.sourcingCost", 0] },
+                    // Regular item: use the standard product cost
+                    else: {
+                      $ifNull: [
+                        {
+                          $let: {
+                            vars: { p: { $arrayElemAt: ["$product", 0] } },
+                            in: "$$p.cost",
+                          },
+                        },
+                        0,
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    ];
 
-    // Calculate profit (simplified - sales - purchases - expenses)
-    const profit =
-      currentSalesStats.totalRevenue - totalPurchase - totalExpenses;
-    const prevProfit = prevSalesStats.totalRevenue - prevTotalPurchase - prevTotalExpenses;
+    const [cogsResult, prevCogsResult] = await Promise.all([
+      Sale.aggregate(buildCogsPipeline(aggCurrentQuery)),
+      Sale.aggregate(buildCogsPipeline(aggPrevQuery)),
+    ]);
 
-    // Calculate invoice due (placeholder - implement based on your Invoice model)
-    const invoiceDue = 0;
-    const prevInvoiceDue = 0;
+    // Guard against any unexpected negative result
+    const totalExpenses = Math.max(0, cogsResult[0]?.totalCOGS || 0);
+    const prevTotalExpenses = Math.max(0, prevCogsResult[0]?.totalCOGS || 0);
 
-    // Calculate payment returns (placeholder)
+    // ── Invoice Due (total outstanding due amount — all unpaid due sales) ─────
+    const invoiceDue = allDueSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+    const prevInvoiceDue = prevDueSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+
+    // ── Profit (Net Profit = Revenue − COGS) ─────────────────────────────────
+    const profit = currentSalesStats.totalRevenue - totalExpenses;
+    const prevProfit = prevSalesStats.totalRevenue - prevTotalExpenses;
+
+    // ── Payment Returns ───────────────────────────────────────────────────────
     const totalPaymentReturns = totalSalesReturn;
     const prevTotalPaymentReturns = prevTotalSalesReturn;
 
@@ -177,7 +261,7 @@ const getDashboardOverview = async (req, res) => {
       todaysSalesReturn: todayTotalSalesReturn,
       todaysPurchase: todayTotalPurchase,
       todaysPurchaseReturn: todayTotalPurchaseReturn,
-      todaysOrderCount: todayOrders.length,
+      todaysOrderCount: todayOrderCount,
 
       // Main KPIs with comparison
       totalSales: {
@@ -247,7 +331,7 @@ const getDashboardOverview = async (req, res) => {
       overallInformation: {
         suppliers: totalSuppliers,
         customers: totalCustomers,
-        orders: currentOrders.length,
+        orders: currentOrderCount,
         lowStockItems: lowStockProducts.length,
       },
 
@@ -307,14 +391,17 @@ const getDashboardStats = async (req, res) => {
     const baseQuery = {};
     if (storeId) baseQuery.storeId = storeId;
 
-    const query = {
-      ...baseQuery,
-      createdAt: { $gte: startDate, $lte: endDate },
-    };
+    // Cast storeId to ObjectId for aggregation pipelines
+    const storeObjectId =
+      storeId && mongoose.Types.ObjectId.isValid(storeId)
+        ? new mongoose.Types.ObjectId(storeId)
+        : null;
+    const aggBase = storeObjectId ? { storeId: storeObjectId } : {};
+    const aggQuery = { ...aggBase, createdAt: { $gte: startDate, $lte: endDate } };
 
     // Sales by day
     const salesByDay = await Sale.aggregate([
-      { $match: query },
+      { $match: aggQuery },
       {
         $group: {
           _id: {
@@ -327,28 +414,51 @@ const getDashboardStats = async (req, res) => {
       { $sort: { _id: 1 } },
     ]);
 
-    // For now, generate mock purchase data (replace with real Purchase model later)
-    const purchaseByDay = salesByDay.map((day) => ({
-      _id: day._id,
-      purchases: day.sales * 0.6, // Mock: 60% of sales
-      count: Math.floor(day.count * 0.4), // Mock: 40% of sales count
-    }));
+    // Real purchase data from SourcedItem model (grouped by day)
+    const purchaseByDay = await SourcedItem.aggregate([
+      {
+        $match: {
+          ...aggBase,
+          createdAt: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+          },
+          purchases: {
+            $sum: { $multiply: ["$sourcingCost", "$quantity"] },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
 
-    // Combine sales and purchases by day
-    const salesAndPurchaseByDay = salesByDay.map((sale) => {
-      const purchase = purchaseByDay.find((p) => p._id === sale._id);
+    // Combine sales and purchases by day (fill gaps where one has data but not the other)
+    const allDates = [
+      ...new Set([
+        ...salesByDay.map((d) => d._id),
+        ...purchaseByDay.map((d) => d._id),
+      ]),
+    ].sort();
+
+    const salesAndPurchaseByDay = allDates.map((date) => {
+      const sale = salesByDay.find((d) => d._id === date);
+      const purchase = purchaseByDay.find((d) => d._id === date);
       return {
-        date: sale._id,
-        sales: sale.sales,
+        date,
+        sales: sale?.sales || 0,
         purchases: purchase?.purchases || 0,
-        salesCount: sale.count,
+        salesCount: sale?.count || 0,
         purchaseCount: purchase?.count || 0,
       };
     });
 
     // Sales by payment method
     const salesByPaymentMethod = await Sale.aggregate([
-      { $match: query },
+      { $match: aggQuery },
       { $unwind: "$payments" },
       {
         $group: {
@@ -363,7 +473,7 @@ const getDashboardStats = async (req, res) => {
     const customersByDay = await Sale.aggregate([
       {
         $match: {
-          ...query,
+          ...aggQuery,
           customerId: { $exists: true, $ne: null }
         }
       },
@@ -390,7 +500,7 @@ const getDashboardStats = async (req, res) => {
     const totalCustomersByDay = await Sale.aggregate([
       {
         $match: {
-          ...query,
+          ...aggQuery,
           customerId: { $exists: true, $ne: null }
         }
       },
@@ -472,18 +582,29 @@ async function getCustomerAnalytics(currentQuery, prevQuery) {
       prevCustomerIds.some((prevId) => prevId.equals(id))
     );
 
+    // Previous-period "new" customers = those in prev but not seen before prev period.
+    // We don't have data two periods back, so use total prev customers as the baseline.
+    const prevNewCount = prevCustomerIds.length - returningCustomerIds.length;
+    // Previous-period "returning" customers = those in prev who also bought in current.
+    // Best available proxy: customers who appear in both periods (returningCustomerIds).
+    // We compare current returning count vs prev total unique customers as baseline.
+    const prevReturningCount = prevCustomerIds.length > 0
+      ? prevCustomerIds.filter((id) =>
+          // count as "previously returning" those in prev who are still buying now
+          currentCustomerIds.some((currId) => currId.equals(id))
+        ).length
+      : 0;
+
     return {
       firstTime: newCustomerIds.length,
       firstTimeChange: calculatePercentageChange(
         newCustomerIds.length,
-        prevCustomerIds.length - returningCustomerIds.length
+        Math.max(0, prevNewCount)
       ),
       return: returningCustomerIds.length,
       returnChange: calculatePercentageChange(
         returningCustomerIds.length,
-        prevCustomerIds.filter((id) =>
-          currentCustomerIds.some((currId) => currId.equals(id))
-        ).length
+        prevReturningCount
       ),
     };
   } catch (error) {

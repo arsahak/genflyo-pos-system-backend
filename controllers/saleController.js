@@ -11,7 +11,7 @@ const createSale = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { storeId, items, payments, customerId } = req.body;
+    const { storeId, items, payments, customerId, isDue } = req.body;
 
     // Validate required fields
     if (!storeId) {
@@ -139,10 +139,11 @@ const createSale = async (req, res) => {
       discount: totalDiscount,
       tax,
       total: finalTotal,
-      payments: payments || [],
+      payments: isDue ? [{ method: "due", amount: 0 }] : (payments || []),
       customerId: customerId || undefined,
       cashierId: req.userId,
-      status: "completed",
+      status: isDue ? "due" : "completed",
+      dueAmount: isDue ? finalTotal : 0,
     });
 
     await sale.save({ session });
@@ -245,18 +246,19 @@ const getSaleById = async (req, res) => {
  */
 const updateSale = async (req, res) => {
   try {
-    const { notes, status } = req.body;
+    const { notes, status, dueAmount } = req.body;
 
     const sale = await Sale.findById(req.params.id);
     if (!sale) {
       return res.status(404).json({ message: "Sale not found" });
     }
 
-    // Only allow updating notes and status (not items or amounts)
+    // Only allow updating notes, status, and dueAmount (not items or amounts)
     if (notes !== undefined) sale.notes = notes;
-    if (status && ["completed", "refunded", "partially_refunded"].includes(status)) {
+    if (status && ["completed", "refunded", "partially_refunded", "due"].includes(status)) {
       sale.status = status;
     }
+    if (dueAmount !== undefined) sale.dueAmount = dueAmount;
 
     await sale.save();
 

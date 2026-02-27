@@ -8,8 +8,11 @@ const productController = require("../controllers/productController");
 // GET /api/products - Get all products with pagination, search, and filters
 router.get("/", auth, productController.getAllProducts);
 
-// GET /api/products/alerts/expiring - Get products expiring soon
+// GET /api/products/alerts/expiring - Get products expiring soon (not yet expired)
 router.get("/alerts/expiring", auth, productController.getExpiringProducts);
+
+// GET /api/products/alerts/expired - Get products that have already expired
+router.get("/alerts/expired", auth, productController.getExpiredProducts);
 
 // GET /api/products/alerts/low-stock - Get products with low stock
 router.get("/alerts/low-stock", auth, productController.getLowStockProducts);

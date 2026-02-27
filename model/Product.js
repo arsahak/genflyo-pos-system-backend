@@ -183,7 +183,8 @@ const productSchema = new mongoose.Schema({
   },
   genericName: {
     type: String,
-    trim: true
+    trim: true,
+    index: true,
   },
   dosage: {
     type: String,

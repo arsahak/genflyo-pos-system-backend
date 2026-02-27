@@ -1,12 +1,14 @@
 const express = require("express");
 const router = express.Router();
-const { auth } = require("../midleware/auth");
+const { auth, hasPermission } = require("../midleware/auth");
 const dashboardController = require("../controllers/dashboardController");
 
 // GET /api/dashboard/overview - Get dashboard overview data
-router.get("/overview", auth, dashboardController.getDashboardOverview);
+// Requires authentication + dashboard read permission
+router.get("/overview", auth, hasPermission("dashboard", "read"), dashboardController.getDashboardOverview);
 
 // GET /api/dashboard/stats - Get detailed statistics
-router.get("/stats", auth, dashboardController.getDashboardStats);
+// Requires authentication + dashboard read permission
+router.get("/stats", auth, hasPermission("dashboard", "read"), dashboardController.getDashboardStats);
 
 module.exports = router;
